@@ -66,10 +66,12 @@ def fetch_aytemiz_diesel():
   return 81.81, False  # Fallback varsayılan motorin değeri
 
 
-# Vessel Data Specs
+# Vessel Data Specs - Calibrated Hydrodynamic & Motor Parameters
 VESSEL_SPECS = {
     "v1": {
         "name": "Tip 1: 12m Monohull (24 Kişi - Öncelik 3)",
+        "hull": "monohull",
+        "motors": 1,
         "loa": 12.0,
         "beam": 3.8,
         "capacity": 24,
@@ -85,6 +87,8 @@ VESSEL_SPECS = {
     },
     "v2": {
         "name": "Tip 2: 13.5m Katamaran (32 Kişi - Öncelik 2)",
+        "hull": "catamaran",
+        "motors": 2,
         "loa": 13.5,
         "beam": 4.2,
         "capacity": 32,
@@ -100,6 +104,8 @@ VESSEL_SPECS = {
     },
     "v3": {
         "name": "Tip 3: 14m Katamaran (54 Kişi - Öncelik 1)",
+        "hull": "catamaran",
+        "motors": 2,
         "loa": 14.0,
         "beam": 4.5,
         "capacity": 54,
@@ -214,6 +220,49 @@ with st.sidebar:
       step=0.5,
   )
 
+
+# --- Calibrated Hydrodynamic Function ---
+def calc_calibrated_vessel_physics(spec, cruise_spd, d_miles, s_hours):
+  payload_weight = spec["capacity"] * 0.080  # Kişi başı 80 kg
+  battery_weight = spec["batCapacity"] * 0.010  # LFP Batarya: 10 kg/kWh
+  total_disp = spec["disp"] + payload_weight + battery_weight
+
+  if spec["hull"] == "monohull":
+    max_power = ((total_disp ** (2 / 3)) * (10**3)) / spec["C"]
+    cruise_power = max_power * ((cruise_spd / 10.0) ** 3.3)
+  else:
+    max_power = ((total_disp**0.72) * (10**3)) / spec["C"]
+    cruise_power = max_power * ((cruise_spd / 10.0) ** 2.85)
+
+  cruise_hours = d_miles / cruise_spd
+  brut_kwh = cruise_power * cruise_hours
+
+  solar_area = spec["loa"] * spec["beam"] * 0.80
+  solar_kwh = solar_area * 0.15 * s_hours
+  net_grid_kwh = max(0.0, (brut_kwh / 0.95) - solar_kwh)
+
+  max_diesel_lph = 30.0
+  cruise_diesel_lph = (
+      max_diesel_lph * ((cruise_spd / 10.0) ** 3.3)
+      if spec["hull"] == "monohull"
+      else max_diesel_lph * ((cruise_spd / 10.0) ** 2.85)
+  )
+
+  return {
+      "total_disp": total_disp,
+      "payload_weight": payload_weight,
+      "battery_weight": battery_weight,
+      "max_power": max_power,
+      "cruise_power": cruise_power,
+      "cruise_hours": cruise_hours,
+      "brut_kwh": brut_kwh,
+      "solar_area": solar_area,
+      "solar_kwh": solar_kwh,
+      "net_grid_kwh": net_grid_kwh,
+      "cruise_diesel_lph": cruise_diesel_lph,
+  }
+
+
 # --- Fleet Aggregate Calculations ---
 total_vessels = count_v1 + count_v2 + count_v3
 total_capacity = (
@@ -255,25 +304,24 @@ fleet_daily_brut_kwh = 0.0
 
 for k, spec_item in VESSEL_SPECS.items():
   if counts[k] > 0:
-    s_area = spec_item["loa"] * spec_item["beam"] * 0.80
-    p_max = (spec_item["disp"] ** (2 / 3) * (10**3)) / spec_item["C"]
-    p_cruise = p_max * ((cruise_speed / 10.0) ** 3)
-    c_hrs = daily_miles / cruise_speed
-    b_kwh = p_cruise * c_hrs
-    s_kwh = s_area * 0.15 * sun_hours
-    n_kwh = max(0.0, (b_kwh / 0.95) - s_kwh)
-    d_lph = 30.0 * ((cruise_speed / 10.0) ** 3)
+    p = calc_calibrated_vessel_physics(
+        spec_item, cruise_speed, daily_miles, sun_hours
+    )
 
     co2_old = (
-        spec_item["merged"] * d_lph * c_hrs * operating_days * 2.68
+        spec_item["merged"]
+        * p["cruise_diesel_lph"]
+        * p["cruise_hours"]
+        * operating_days
+        * 2.68
     ) / 1000
-    co2_new = (n_kwh * operating_days * 0.44) / 1000
+    co2_new = (p["net_grid_kwh"] * operating_days * 0.44) / 1000
     single_co2_saved = co2_old - co2_new
 
     fleet_total_co2_reduction += single_co2_saved * counts[k]
-    fleet_daily_solar_kwh += s_kwh * counts[k]
-    fleet_daily_grid_kwh += n_kwh * counts[k]
-    fleet_daily_brut_kwh += (b_kwh / 0.95) * counts[k]
+    fleet_daily_solar_kwh += p["solar_kwh"] * counts[k]
+    fleet_daily_grid_kwh += p["net_grid_kwh"] * counts[k]
+    fleet_daily_brut_kwh += (p["brut_kwh"] / 0.95) * counts[k]
 
 equivalent_trees = int(fleet_total_co2_reduction / 0.022)
 fleet_annual_grid_kwh = fleet_daily_grid_kwh * operating_days
@@ -360,24 +408,36 @@ st.markdown(solar_html, unsafe_allow_html=True)
 st.divider()
 
 # --- All Vessel Types Detailed Breakdown Section (Alt Alta) ---
-st.subheader("📊 Tüm Tekne Tipleri İçin Tekil Detay Analizleri")
+st.subheader("📊 Tüm Tekne Tipleri İçin Tekil Detay Analizleri (Kalibre Edilmiş)")
 
 for v_key, spec in VESSEL_SPECS.items():
   with st.expander(f"📌 {spec['name']}", expanded=True):
-    solar_area = spec["loa"] * spec["beam"] * 0.80
-    max_power_kw = (spec["disp"] ** (2 / 3) * (10**3)) / spec["C"]
-    cruise_power_kw = max_power_kw * ((cruise_speed / 10.0) ** 3)
-    cruise_hours = daily_miles / cruise_speed
+    p = calc_calibrated_vessel_physics(
+        spec, cruise_speed, daily_miles, sun_hours
+    )
 
-    brut_kwh = cruise_power_kw * cruise_hours
-    solar_kwh = solar_area * 0.15 * sun_hours
-    net_grid_kwh = max(0.0, (brut_kwh / 0.95) - solar_kwh)
+    motor_multiplier = 1.20 if spec["motors"] == 2 else 1.0
+    motor_cost_tl = p["max_power"] * (400 * eur_rate) * motor_multiplier
 
-    max_diesel_lph = 30.0
-    cruise_diesel_lph = max_diesel_lph * ((cruise_speed / 10.0) ** 3)
+    per_motor_peak_kw = p["max_power"] / spec["motors"]
+    per_motor_cruise_kw = p["cruise_power"] / spec["motors"]
 
-    motor_cost_tl = max_power_kw * (400 * eur_rate)
-    solar_cost_tl = solar_area * (150 * eur_rate)
+    if spec["motors"] == 2:
+      motor_desc = (
+          f"• IE5 Çift Sevk Sistemi (2x {per_motor_peak_kw:.1f} kW Zirve Güç)"
+      )
+      peak_power_str = (
+          f"2x {per_motor_peak_kw:.1f} kW ({p['max_power']:.1f} kW Toplam)"
+      )
+      cruise_power_str = (
+          f"2x {per_motor_cruise_kw:.1f} kW ({p['cruise_power']:.1f} kW Toplam)"
+      )
+    else:
+      motor_desc = f"• IE5 Tek Sevk Sistemi ({p['max_power']:.1f} kW Zirve Güç)"
+      peak_power_str = f"{p['max_power']:.1f} kW"
+      cruise_power_str = f"{p['cruise_power']:.1f} kW"
+
+    solar_cost_tl = p["solar_area"] * (150 * eur_rate)
     bat_cost_tl = spec["batCostEur"] * eur_rate
     infra_share_tl = (750000 * eur_rate) / 150
 
@@ -386,31 +446,38 @@ for v_key, spec in VESSEL_SPECS.items():
 
     old_diesel_cost = (
         spec["merged"]
-        * (cruise_diesel_lph * cruise_hours * operating_days * diesel_price)
+        * (p["cruise_diesel_lph"] * p["cruise_hours"] * operating_days * diesel_price)
     )
     old_maint_cost = spec["merged"] * 140000
     old_total_annual = old_diesel_cost + old_maint_cost
 
-    new_elec_cost = net_grid_kwh * operating_days * elec_price
+    new_elec_cost = p["net_grid_kwh"] * operating_days * elec_price
     new_degradation = (
         (bat_cost_tl / 3000)
-        * (brut_kwh / spec["batCapacity"])
+        * (p["brut_kwh"] / spec["batCapacity"])
         * operating_days
     )
     new_maint_cost = old_maint_cost * 0.15
     new_total_annual = new_elec_cost + new_degradation + new_maint_cost
 
     net_savings = old_total_annual - new_total_annual
-    payback_years = net_capex / net_savings if net_savings > 0 else float("inf")
+
+    # REVISED ROI / PAYBACK CALCULATIONS (Sezonsal Sezon & Operasyonel Ay Hesabı)
+    payback_seasons = net_capex / net_savings if net_savings > 0 else float("inf")
+    payback_months = (
+        payback_seasons * (operating_days / 30.0)
+        if net_savings > 0
+        else float("inf")
+    )
 
     old_co2 = (
         spec["merged"]
-        * cruise_diesel_lph
-        * cruise_hours
+        * p["cruise_diesel_lph"]
+        * p["cruise_hours"]
         * operating_days
         * 2.68
     ) / 1000
-    new_co2 = (net_grid_kwh * operating_days * 0.44) / 1000
+    new_co2 = (p["net_grid_kwh"] * operating_days * 0.44) / 1000
     net_co2 = old_co2 - new_co2
 
     # Metric Cards
@@ -418,14 +485,14 @@ for v_key, spec in VESSEL_SPECS.items():
     with kpi1:
       st.metric("Net Özkaynak CAPEX", f"₺{int(net_capex):,}")
     with kpi2:
-      st.metric("Yıllık Net Tasarruf", f"₺{int(net_savings):,}")
+      st.metric("Sezonluk Net Tasarruf", f"₺{int(net_savings):,}")
     with kpi3:
       st.metric(
           "Özkaynak Amortisman (ROI)",
-          f"{payback_years:.1f} Yıl ({int(payback_years*12)} Ay)",
+          f"{payback_seasons:.1f} Sezon ({int(payback_months)} Ay)",
       )
     with kpi4:
-      st.metric("Yıllık CO2 Salınım Azaltımı", f"{net_co2:.1f} Ton")
+      st.metric("Sezonluk CO2 Salınım Azaltımı", f"{net_co2:.1f} Ton")
 
     col_left, col_right = st.columns([6, 6])
 
@@ -436,7 +503,7 @@ for v_key, spec in VESSEL_SPECS.items():
               "Brüt Toplam Maliyet",
               "Alınan Devlet Hibesi",
               "Net Özkaynak (CAPEX)",
-              "• IE5 Elektrikli Sevk Sistemi",
+              motor_desc,
               "• Hardtop Solar PV Tavan",
               "• Lityum Batarya Paketi",
               "• Altyapı Payı (1/150)",
@@ -454,8 +521,11 @@ for v_key, spec in VESSEL_SPECS.items():
               "Birim ihale maliyeti",
               spec["priority"],
               "Yatırımcı Net Sermayesi",
-              f"{max_power_kw:.1f} kW zirve güç",
-              f"{solar_area:.1f} m² tavan paneli",
+              (
+                  f"{spec['motors']}x Pod/Şaft sevk motoru"
+                  f" ({'Çift hattı' if spec['motors']==2 else 'Tek hat'})"
+              ),
+              f"{p['solar_area']:.1f} m² tavan paneli",
               f"{spec['batCapacity']} kWh LFP paketi",
               "Liman şarj & izleme payı",
           ],
@@ -463,18 +533,18 @@ for v_key, spec in VESSEL_SPECS.items():
       st.table(capex_df)
 
     with col_right:
-      st.markdown("**Yıllık İşletme Giderleri (OPEX) ve Tasarruf Dökümü**")
+      st.markdown("**Sezonluk İşletme Giderleri (OPEX) ve Tasarruf Dökümü**")
       opex_df = pd.DataFrame({
           "Gider Kalemi": [
               f"Eski Ahşap Yakıt Giderleri ({cruise_speed:.1f} kt /"
-              f" {cruise_diesel_lph:.2f} L/h)",
-              "Eski Ahşap Yıllık Bakım/Rektefiye",
-              "ESKİ TEKNE YILLIK GİDERLER TOPLAMI",
+              f" {p['cruise_diesel_lph']:.2f} L/h)",
+              "Eski Ahşap Sezonluk Bakım/Rektefiye",
+              "ESKİ TEKNE SEZONLUK GİDERLER TOPLAMI",
               "Yeni Elektrikli Şebeke Şarj Masrafları",
               "Yeni Batarya Yıpranma Karşılığı",
               "Yeni Elektrikli Periyodik Bakım",
-              "YENİ TEKNE YILLIK GİDER TOPLAMI",
-              "YILLIK NET FİNANSAL TASARRUF",
+              "YENİ TEKNE SEZONLUK GİDER TOPLAMI",
+              "SEZONLUK NET FİNANSAL TASARRUF",
           ],
           "Tutar (TL)": [
               f"₺{int(old_diesel_cost):,}",
@@ -489,19 +559,23 @@ for v_key, spec in VESSEL_SPECS.items():
       })
       st.table(opex_df)
 
-    st.markdown("**⚡ Hidrodinamik ve Dinamik Enerji Dengesi**")
+    st.markdown(
+        "**⚡ Hidrodinamik ve Sevk Sistemi Kalibrasyonu**"
+        f" *(Deplasman: {p['total_disp']:.2f} Ton | Motor Düzeni:"
+        f" {spec['motors']}x Sevk Hattı)*"
+    )
     tech_col1, tech_col2, tech_col3, tech_col4 = st.columns(4)
     with tech_col1:
-      st.info(f"**10 Knots Zirve Güç:**\n\n{max_power_kw:.1f} kW")
+      st.info(f"**10 Knots Zirve Güç:**\n\n{peak_power_str}")
     with tech_col2:
       st.info(
-          f"**{cruise_speed:.1f} Knots Seyir Gücü:**\n\n{cruise_power_kw:.1f}"
-          f" kW (Dizel: {cruise_diesel_lph:.2f} L/h)"
+          f"**{cruise_speed:.1f} Knots Seyir Gücü:**\n\n{cruise_power_str} (Dizel:"
+          f" {p['cruise_diesel_lph']:.2f} L/h)"
       )
     with tech_col3:
       st.info(
           "**Günlük Solar PV Üretimi:**\n\n"
-          f"{solar_kwh:.1f} kWh/gün ({sun_hours}s Güneş)"
+          f"{p['solar_kwh']:.1f} kWh/gün ({sun_hours}s Güneş)"
       )
     with tech_col4:
-      st.info(f"**Net Şebeke Şarj İhtiyacı:**\n\n{net_grid_kwh:.1f} kWh/gün")
+      st.info(f"**Net Şebeke Şarj İhtiyacı:**\n\n{p['net_grid_kwh']:.1f} kWh/gün")
