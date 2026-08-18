@@ -2,8 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import urllib.request
-import xml.etree.ElementTree as ET
-from bs4 import BeautifulSoup
+import re
 
 # Page Configuration
 st.set_page_config(
@@ -31,32 +30,35 @@ def fetch_tcmb_eur():
         pass
     return 55.50, False  # Fallback varsayılan değer
 
-# Helper function to fetch Opet Mugla / Ortaca Diesel price online
+# Helper function to fetch Aytemiz Mugla / Ortaca Diesel price online
 @st.cache_data(ttl=3600)
 def fetch_opet_diesel():
     try:
-        url = "https://www.opet.com.tr/akaryakit-fiyatlari/mugla"
+        url = "https://www.aytemiz.com.tr/akaryakit-fiyatlari/motorin-fiyatlari/mugla-motorin-fiyati"
         req = urllib.request.Request(
             url, 
             headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         )
-        with urllib.request.urlopen(req, timeout=6) as response:
+        with urllib.request.urlopen(req, timeout=8) as response:
             html = response.read().decode('utf-8')
-        
-        soup = BeautifulSoup(html, 'html.parser')
-        
-        # Opet Muğla sayfasındaki satırları tara
-        for tr in soup.find_all('tr'):
-            tr_text = tr.get_text()
-            if "ORTACA" in tr_text.upper():
-                cols = tr.find_all(['td', 'th'])
-                # Tablo sütun yapısı: İlçe | KDV | Benzin 95 | Motorin UltraForce | ...
-                if len(cols) >= 4:
-                    raw_price = cols[3].text.replace("TL/L", "").replace(",", ".").strip()
-                    return float(raw_price), True
+            
+        if "ORTACA" in html.upper():
+            # Ortaca kelimesinden sonraki 500 karakterlik tablo bölümünü al
+            part = html.upper().split("ORTACA")[1][:500]
+            
+            # Tüm fiyat desenlerini liste olarak yakala (Örn: ['71.64', '81.95', '81.95'])
+            matches = re.findall(r'(\d{2}[\.,]\d{2})', part)
+            
+            if len(matches) >= 2:
+                # 1. Eleman (matches[0]) Benzin, 2. Eleman (matches[1]) Motorin fiyatıdır
+                diesel_price = float(matches[1].replace(',', '.'))
+                return diesel_price, True
+            elif len(matches) == 1:
+                return float(matches[0].replace(',', '.')), True
     except Exception:
         pass
-    return 81.62, False  # Fallback varsayılan Ortaca Opet değeri
+
+    return 81.81, False  # Fallback varsayılan motorin değeri
 
 # Header
 st.markdown('<p style="font-size: 1.8rem; font-weight: 700; color: #1E3A8A; margin-bottom: 0px;">⚓ ElectroFleet Maritime — Dalyan Elektrikli Tekne Dönüşüm Portalı</p>', unsafe_allow_html=True)
