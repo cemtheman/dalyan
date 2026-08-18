@@ -200,14 +200,14 @@ with st.sidebar:
       "Tip 1 (12m Monohull - 24 Kişi - %55) Adet",
       min_value=0,
       max_value=200,
-      value=70,
+      value=50,
       step=1,
   )
   count_v2 = st.number_input(
       "Tip 2 (13.5m Katamaran - 32 Kişi - %55) Adet",
       min_value=0,
       max_value=200,
-      value=70,
+      value=50,
       step=1,
   )
   count_v3 = st.number_input(
