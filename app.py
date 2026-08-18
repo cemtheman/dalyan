@@ -145,22 +145,22 @@ with st.sidebar:
 
   st.subheader("🚢 Filo Dönüşüm Hedefleri")
   count_v1 = st.number_input(
-      "Tip 1 (12m - 24 Kişi) Adet", min_value=0, max_value=200, value=60, step=1
+      "Tip 1 (12m - 24 Kişi) Adet", min_value=0, max_value=200, value=90, step=1
   )
   count_v2 = st.number_input(
-      "Tip 2 (13.5m - 32 Kişi) Adet", min_value=0, max_value=200, value=60, step=1
+      "Tip 2 (13.5m - 32 Kişi) Adet", min_value=0, max_value=200, value=90, step=1
   )
   count_v3 = st.number_input(
-      "Tip 3 (14m - 54 Kişi) Adet", min_value=0, max_value=200, value=40, step=1
+      "Tip 3 (14m - 54 Kişi) Adet", min_value=0, max_value=200, value=50, step=1
   )
 
   st.divider()
 
   st.subheader("🌐 Canlı Piyasa & Kurlar")
-  st.caption("TCMB ve Aytemiz (Ortaca) servislerinden otomatik güncellenir.")
+  st.caption("TCMB ve Aytemiz servislerinden otomatik güncellenir.")
 
   eur_rate = st.number_input(
-      f"EUR / TRY Kuru {'(🟢 Canlı TCMB)' if eur_is_live else '(🟡 Sabit)'}",
+      f"EUR / TRY Kuru {'🟢 Canlı TCMB' if eur_is_live else '🟡 Sabit'}",
       min_value=30.0,
       max_value=120.0,
       value=float(live_eur),
@@ -168,8 +168,8 @@ with st.sidebar:
   )
   diesel_price = st.number_input(
       (
-          "Dizel Yakıt Fiyatı"
-          f" {'(🟢 Aytemiz Ortaca)' if diesel_is_live else '(🟡 Sabit)'} TL/L"
+          "Dizel Yakıt Fiyatı TL/L"
+          f" {'🟢 Canlı Aytemiz' if diesel_is_live else '🟡 Sabit'} "
       ),
       min_value=30.0,
       max_value=180.0,
@@ -180,15 +180,15 @@ with st.sidebar:
       "Liman Şebeke Elektrik Fiyatı (TL/kWh)",
       min_value=3.0,
       max_value=30.0,
-      value=8.50,
+      value=3.50,
       step=0.5,
   )
 
   st.subheader("İklim ve Operasyon")
   operating_days = st.number_input(
       "Sezon Operasyon Gün Sayısı",
-      min_value=90,
-      max_value=300,
+      min_value=30,
+      max_value=360,
       value=180,
       step=10,
   )
