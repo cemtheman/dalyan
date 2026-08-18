@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import urllib.request
 import re
+import xml.etree.ElementTree as ET  # EKSİK OLAN KÜTÜPHANE EKLENDİ
 
 # Page Configuration
 st.set_page_config(
@@ -17,7 +18,7 @@ st.set_page_config(
 def fetch_tcmb_eur():
     try:
         url = "https://www.tcmb.gov.tr/kurlar/today.xml"
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
         with urllib.request.urlopen(req, timeout=5) as response:
             xml_data = response.read()
         root = ET.fromstring(xml_data)
@@ -32,7 +33,7 @@ def fetch_tcmb_eur():
 
 # Helper function to fetch Aytemiz Mugla / Ortaca Diesel price online
 @st.cache_data(ttl=3600)
-def fetch_opet_diesel():
+def fetch_aytemiz_diesel():
     try:
         url = "https://www.aytemiz.com.tr/akaryakit-fiyatlari/motorin-fiyatlari/mugla-motorin-fiyati"
         req = urllib.request.Request(
@@ -50,7 +51,7 @@ def fetch_opet_diesel():
             matches = re.findall(r'(\d{2}[\.,]\d{2})', part)
             
             if len(matches) >= 2:
-                # 1. Eleman (matches[0]) Benzin, 2. Eleman (matches[1]) Motorin fiyatıdır
+                # 1. Eleman Benzin, 2. Eleman Motorin fiyatıdır
                 diesel_price = float(matches[1].replace(',', '.'))
                 return diesel_price, True
             elif len(matches) == 1:
@@ -66,7 +67,7 @@ st.markdown('<p style="font-size: 0.9rem; color: #4B5563; margin-bottom: 20px;">
 
 # Fetch Online Live Data
 live_eur, eur_is_live = fetch_tcmb_eur()
-live_diesel, diesel_is_live = fetch_opet_diesel()
+live_diesel, diesel_is_live = fetch_aytemiz_diesel()
 
 # Vessel Data Specs
 VESSEL_SPECS = {
@@ -103,14 +104,14 @@ with st.sidebar:
     spec = VESSEL_SPECS[selected_type]
 
     st.subheader("🌐 Canlı Piyasa & Kurlar")
-    st.caption("TCMB ve Opet (Ortaca) servislerinden otomatik güncellenir.")
+    st.caption("TCMB ve Aytemiz (Ortaca) servislerinden otomatik güncellenir.")
     
     eur_rate = st.number_input(
-        f"EUR / TRY Kuru {'(🟢 Canlı)' if eur_is_live else '(🟡 Sabit)'}", 
+        f"EUR / TRY Kuru {'(🟢 Canlı TCMB)' if eur_is_live else '(🟡 Sabit)'}", 
         min_value=30.0, max_value=120.0, value=float(live_eur), step=0.1
     )
     diesel_price = st.number_input(
-        f"Dizel Yakıt Fiyatı {'(🟢 Opet Ortaca)' if diesel_is_live else '(🟡 Sabit)'} TL/L", 
+        f"Dizel Yakıt Fiyatı {'(🟢 Aytemiz Ortaca)' if diesel_is_live else '(🟡 Sabit)'} TL/L", 
         min_value=30.0, max_value=180.0, value=float(live_diesel), step=0.1
     )
     elec_price = st.number_input("Liman Şebeke Elektrik Fiyatı (TL/kWh)", min_value=3.0, max_value=30.0, value=8.50, step=0.5)
