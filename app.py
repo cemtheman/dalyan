@@ -200,14 +200,14 @@ with st.sidebar:
       "Tip 1 (12m Monohull - 24 Kişi - %55) Adet",
       min_value=0,
       max_value=200,
-      value=50,
+      value=70,
       step=1,
   )
   count_v2 = st.number_input(
       "Tip 2 (13.5m Katamaran - 32 Kişi - %55) Adet",
       min_value=0,
       max_value=200,
-      value=50,
+      value=70,
       step=1,
   )
   count_v3 = st.number_input(
@@ -228,7 +228,7 @@ with st.sidebar:
       "Tip 4A (12m Monohull - 24 Kişi - %40) Adet",
       min_value=0,
       max_value=200,
-      value=35,
+      value=30,
       step=1,
   )
   count_v4_32 = st.number_input(
@@ -534,6 +534,11 @@ for v_key, spec in VESSEL_SPECS.items():
     bat_cost_tl = spec["batCostEur"] * eur_rate
     infra_share_tl = (750000 * eur_rate) / 150
 
+    # Tekne Gövde & Genel Donatım Maliyeti (Brüt Maliyet Farkı)
+    hull_cost_tl = spec["totalCost"] - (
+        motor_cost_tl + solar_cost_tl + bat_cost_tl + infra_share_tl
+    )
+
     grant_amount = min(spec["maxGrant"], spec["totalCost"] * spec["grantRate"])
     net_capex = spec["totalCost"] - grant_amount
 
@@ -595,6 +600,7 @@ for v_key, spec in VESSEL_SPECS.items():
               "Brüt Toplam Maliyet",
               "Alınan Devlet Hibesi",
               "Net Özkaynak (CAPEX)",
+              "• Tekne Gövde & Genel Donatım Maliyeti",
               motor_desc,
               "• Hardtop Solar PV Tavan",
               "• Lityum Batarya Paketi",
@@ -604,6 +610,7 @@ for v_key, spec in VESSEL_SPECS.items():
               f"₺{spec['totalCost']:,}",
               f"-₺{int(grant_amount):,}",
               f"₺{int(net_capex):,}",
+              f"₺{int(hull_cost_tl):,}",
               f"₺{int(motor_cost_tl):,}",
               f"₺{int(solar_cost_tl):,}",
               f"₺{int(bat_cost_tl):,}",
@@ -613,6 +620,7 @@ for v_key, spec in VESSEL_SPECS.items():
               "Birim ihale maliyeti",
               spec["priority"],
               "Yatırımcı Net Sermayesi",
+              "Gövde & iç donatım maliyeti",
               (
                   f"{spec['motors']}x Pod/Şaft sevk motoru"
                   f" ({'Çift hattı' if spec['motors']==2 else 'Tek hat'})"
