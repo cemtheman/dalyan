@@ -145,13 +145,13 @@ with st.sidebar:
 
   st.subheader("🚢 Filo Dönüşüm Hedefleri")
   count_v1 = st.number_input(
-      "Tip 1 (12m - 24 Kişi) Adet", min_value=0, max_value=200, value=10, step=1
+      "Tip 1 (12m - 24 Kişi) Adet", min_value=0, max_value=200, value=90, step=1
   )
   count_v2 = st.number_input(
-      "Tip 2 (13.5m - 32 Kişi) Adet", min_value=0, max_value=200, value=15, step=1
+      "Tip 2 (13.5m - 32 Kişi) Adet", min_value=0, max_value=200, value=30, step=1
   )
   count_v3 = st.number_input(
-      "Tip 3 (14m - 54 Kişi) Adet", min_value=0, max_value=200, value=25, step=1
+      "Tip 3 (14m - 54 Kişi) Adet", min_value=0, max_value=200, value=40, step=1
   )
 
   st.divider()
@@ -168,8 +168,8 @@ with st.sidebar:
   )
   diesel_price = st.number_input(
       (
-          "Dizel Yakıt Fiyatı"
-          f" {'(🟢 Aytemiz Ortaca)' if diesel_is_live else '(🟡 Sabit)'} TL/L"
+          "Dizel Yakıt Fiyatı TL/Lt"
+          f" {'(🟢 Aytemiz Ortaca)' if diesel_is_live else '(🟡 Sabit)'} "
       ),
       min_value=30.0,
       max_value=180.0,
@@ -180,7 +180,7 @@ with st.sidebar:
       "Liman Şebeke Elektrik Fiyatı (TL/kWh)",
       min_value=3.0,
       max_value=30.0,
-      value=8.50,
+      value=3.50,
       step=0.5,
   )
 
@@ -194,8 +194,8 @@ with st.sidebar:
   )
   sun_hours = st.number_input(
       "Günlük Güneşlenme Süresi (Saat/Gün)",
-      min_value=4.0,
-      max_value=12.0,
+      min_value=0.0,
+      max_value=14.0,
       value=8.0,
       step=0.5,
   )
@@ -245,6 +245,28 @@ fleet_total_grant = (
     count_v1 * v1_grant + count_v2 * v2_grant + count_v3 * v3_grant
 )
 fleet_total_capex = fleet_total_cost - fleet_total_grant
+
+# --- Fleet Total CO2 Reduction Calculation ---
+counts = {"v1": count_v1, "v2": count_v2, "v3": count_v3}
+fleet_total_co2_reduction = 0.0
+
+for k, spec_item in VESSEL_SPECS.items():
+  if counts[k] > 0:
+    s_area = spec_item["loa"] * spec_item["beam"] * 0.80
+    p_max = (spec_item["disp"] ** (2 / 3) * (10**3)) / spec_item["C"]
+    p_cruise = p_max * ((cruise_speed / 10.0) ** 3)
+    c_hrs = daily_miles / cruise_speed
+    b_kwh = p_cruise * c_hrs
+    s_kwh = s_area * 0.15 * sun_hours
+    n_kwh = max(0.0, (b_kwh / 0.95) - s_kwh)
+    d_lph = 30.0 * ((cruise_speed / 10.0) ** 3)
+
+    co2_old = (
+        spec_item["merged"] * d_lph * c_hrs * operating_days * 2.68
+    ) / 1000
+    co2_new = (n_kwh * operating_days * 0.44) / 1000
+    single_co2_saved = co2_old - co2_new
+    fleet_total_co2_reduction += single_co2_saved * counts[k]
 
 # --- Fleet Summary Dashboard Section ---
 st.subheader("🚢 Filo Geneli Toplam Dönüşüm ve Finansman Özeti")
@@ -300,6 +322,17 @@ fleet_summary_df = pd.DataFrame({
     ],
 })
 st.table(fleet_summary_df)
+
+# Big CO2 Reduction Banner - Single Line
+st.markdown(
+    '<div style="background-color: #ECFDF5; border: 1.5px solid #10B981;'
+    " border-radius: 8px; padding: 12px 20px; text-align: center;"
+    ' margin-top: 10px; margin-bottom: 20px;">'
+    f'<p style="font-size: 1.35rem; font-weight: 700; color: #065F46; margin:'
+    f' 0;">🌱 Filo Dönüşümü İle Yıllık Toplam CO₂ Salınım Azaltımı: {fleet_total_co2_reduction:,.1f} Ton / Yıl</p>'
+    "</div>",
+    unsafe_allow_html=True,
+)
 
 st.divider()
 
