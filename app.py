@@ -145,10 +145,10 @@ with st.sidebar:
 
   st.subheader("🚢 Filo Dönüşüm Hedefleri")
   count_v1 = st.number_input(
-      "Tip 1 (12m - 24 Kişi) Adet", min_value=0, max_value=200, value=90, step=1
+      "Tip 1 (12m - 24 Kişi) Adet", min_value=0, max_value=200, value=60, step=1
   )
   count_v2 = st.number_input(
-      "Tip 2 (13.5m - 32 Kişi) Adet", min_value=0, max_value=200, value=30, step=1
+      "Tip 2 (13.5m - 32 Kişi) Adet", min_value=0, max_value=200, value=60, step=1
   )
   count_v3 = st.number_input(
       "Tip 3 (14m - 54 Kişi) Adet", min_value=0, max_value=200, value=40, step=1
@@ -168,8 +168,8 @@ with st.sidebar:
   )
   diesel_price = st.number_input(
       (
-          "Dizel Yakıt Fiyatı TL/Lt"
-          f" {'(🟢 Aytemiz Ortaca)' if diesel_is_live else '(🟡 Sabit)'} "
+          "Dizel Yakıt Fiyatı"
+          f" {'(🟢 Aytemiz Ortaca)' if diesel_is_live else '(🟡 Sabit)'} TL/L"
       ),
       min_value=30.0,
       max_value=180.0,
@@ -180,7 +180,7 @@ with st.sidebar:
       "Liman Şebeke Elektrik Fiyatı (TL/kWh)",
       min_value=3.0,
       max_value=30.0,
-      value=3.50,
+      value=8.50,
       step=0.5,
   )
 
@@ -195,7 +195,7 @@ with st.sidebar:
   sun_hours = st.number_input(
       "Günlük Güneşlenme Süresi (Saat/Gün)",
       min_value=0.0,
-      max_value=14.0,
+      max_value=12.0,
       value=8.0,
       step=0.5,
   )
@@ -246,9 +246,12 @@ fleet_total_grant = (
 )
 fleet_total_capex = fleet_total_cost - fleet_total_grant
 
-# --- Fleet Total CO2 Reduction Calculation ---
+# --- Fleet Total CO2 Reduction, Tree Equivalent & Energy Balance Calculation ---
 counts = {"v1": count_v1, "v2": count_v2, "v3": count_v3}
 fleet_total_co2_reduction = 0.0
+fleet_daily_solar_kwh = 0.0
+fleet_daily_grid_kwh = 0.0
+fleet_daily_brut_kwh = 0.0
 
 for k, spec_item in VESSEL_SPECS.items():
   if counts[k] > 0:
@@ -266,7 +269,20 @@ for k, spec_item in VESSEL_SPECS.items():
     ) / 1000
     co2_new = (n_kwh * operating_days * 0.44) / 1000
     single_co2_saved = co2_old - co2_new
+
     fleet_total_co2_reduction += single_co2_saved * counts[k]
+    fleet_daily_solar_kwh += s_kwh * counts[k]
+    fleet_daily_grid_kwh += n_kwh * counts[k]
+    fleet_daily_brut_kwh += (b_kwh / 0.95) * counts[k]
+
+equivalent_trees = int(fleet_total_co2_reduction / 0.022)
+fleet_annual_grid_kwh = fleet_daily_grid_kwh * operating_days
+fleet_annual_solar_kwh = fleet_daily_solar_kwh * operating_days
+solar_coverage_ratio = (
+    (fleet_daily_solar_kwh / fleet_daily_brut_kwh) * 100
+    if fleet_daily_brut_kwh > 0
+    else 0
+)
 
 # --- Fleet Summary Dashboard Section ---
 st.subheader("🚢 Filo Geneli Toplam Dönüşüm ve Finansman Özeti")
@@ -323,16 +339,23 @@ fleet_summary_df = pd.DataFrame({
 })
 st.table(fleet_summary_df)
 
-# Big CO2 Reduction Banner - Single Line
-st.markdown(
-    '<div style="background-color: #ECFDF5; border: 1.5px solid #10B981;'
-    " border-radius: 8px; padding: 12px 20px; text-align: center;"
-    ' margin-top: 10px; margin-bottom: 20px;">'
-    f'<p style="font-size: 1.35rem; font-weight: 700; color: #065F46; margin:'
-    f' 0;">🌱 Filo Dönüşümü İle Yıllık Toplam CO₂ Salınım Azaltımı: {fleet_total_co2_reduction:,.1f} Ton / Yıl</p>'
-    "</div>",
-    unsafe_allow_html=True,
-)
+# CO2 Reduction & Tree Equivalent Banner
+co2_html = f"""
+<div style="background-color: #ECFDF5; border: 1.5px solid #10B981; border-radius: 8px; padding: 14px 20px; text-align: center; margin-top: 10px; margin-bottom: 12px;">
+    <p style="font-size: 1.25rem; font-weight: 700; color: #065F46; margin: 0;">🌱 Filo Dönüşümü İle Yıllık Toplam CO₂ Salınım Azaltımı: {fleet_total_co2_reduction:,.1f} Ton / Yıl</p>
+    <p style="font-size: 1.05rem; font-weight: 600; color: #047857; margin: 4px 0 0 0;">🌳 Bu Çevresel Kazanç Yılda Yaklaşık <b>{equivalent_trees:,} Yetişkin Ağacın</b> Temizlediği Karbon Miktarına Eşdeğerdir.</p>
+</div>
+"""
+st.markdown(co2_html, unsafe_allow_html=True)
+
+# Solar & Grid Electricity Balance Banner
+solar_html = f"""
+<div style="background-color: #EFF6FF; border: 1.5px solid #3B82F6; border-radius: 8px; padding: 14px 20px; text-align: center; margin-bottom: 20px;">
+    <p style="font-size: 1.25rem; font-weight: 700; color: #1E40AF; margin: 0;">⚡ Filo Elektrik ve Şebeke Şarj İhtiyacı Dengesi ({sun_hours} Saat/Gün Güneşlenme)</p>
+    <p style="font-size: 1.05rem; font-weight: 600; color: #1D4ED8; margin: 4px 0 0 0;">☀️ Günlük Güneş Üretimi: <b>{fleet_daily_solar_kwh:,.1f} kWh</b> (%{solar_coverage_ratio:.1f} Karşılama) | 🔌 Liman Şebeke Şarj İhtiyacı: <b>{fleet_daily_grid_kwh:,.1f} kWh/gün</b> (Sezonluk: <b>{fleet_annual_grid_kwh:,.0f} kWh/sezon</b>)</p>
+</div>
+"""
+st.markdown(solar_html, unsafe_allow_html=True)
 
 st.divider()
 
