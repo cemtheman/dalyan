@@ -30,25 +30,36 @@ def fetch_tcmb_eur():
         pass
     return 55.50  # Fallback varsayılan değer
 
-# Helper function to fetch PO Diesel price online
+# Helper function to fetch EPDK Diesel price online
 @st.cache_data(ttl=3600)
-def fetch_po_diesel():
+def fetch_epdk_diesel():
+    # 1. Yöntem: EPDK Resmi Günlük Fiyat Bülteni Servisi (Muğla - İl Kodu: 48)
     try:
-        url = "https://www.petrolofisi.com.tr/akaryakit-fiyatlari"
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        epdk_api_url = "https://lisans.epdk.gov.tr/epdailyfuel/getFuelPricesByCity?cityCode=48"
+        req = urllib.request.Request(epdk_api_url, headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Accept': 'application/json'
+        })
         with urllib.request.urlopen(req, timeout=5) as response:
-            html = response.read().decode('utf-8')
+            data = json.loads(response.read().decode('utf-8'))
+            for item in data.get('items', data if isinstance(data, list) else []):
+                p_name = str(item.get('fuelType', item.get('urunAd', ''))).lower()
+                if 'motorin' in p_name or 'dizel' in p_name:
+                    price = float(item.get('price', item.get('fiyat', 0)))
+                    if price > 0:
+                        return price
     except Exception:
         pass
-    return 81.00  # Fallback varsayılan değer
+
+    return 81.00  # Bağlantı koptuğunda emniyet yedek değeri
 
 # Header
-st.markdown('<p style="font-size: 1.8rem; font-weight: 700; color: #1E3A8A; margin-bottom: 0px;">⚓ ElectroFleet Maritime V7 — Dalyan Elektrikli Tekne Dönüşüm Portalı</p>', unsafe_allow_html=True)
+st.markdown('<p style="font-size: 1.8rem; font-weight: 700; color: #1E3A8A; margin-bottom: 0px;">⚓ ElectroFleet Maritime — Dalyan Elektrikli Tekne Dönüşüm Portalı</p>', unsafe_allow_html=True)
 st.markdown('<p style="font-size: 0.9rem; color: #4B5563; margin-bottom: 20px;">Teknik Komisyon Sonuç Raporu Uyumlu İnteraktif Fizibilite ve Hibe Simülatörü</p>', unsafe_allow_html=True)
 
 # Fetch Online Live Data
 live_eur = fetch_tcmb_eur()
-live_diesel = fetch_po_diesel()
+live_diesel = fetch_epdk_diesel()
 
 # Vessel Data Specs
 VESSEL_SPECS = {
@@ -156,10 +167,10 @@ st.divider()
 col_left, col_right = st.columns([6, 6])
 
 with col_left:
-    st.subheader("📊 CAPEX ve Hibe Detayı")
+    st.subheader("📊 Yatırım Masrafları (CAPEX) ve Hibe Detayı")
     capex_df = pd.DataFrame({
         "Maliyet Kalemi": [
-            "Brüt Toplam Maliyet", "Alınan Devlet Hibesi", "NET ÖZKAYNAK CAPEX",
+            "Brüt Toplam Maliyet", "Alınan Devlet Hibesi", "Net Özkaynak (CAPEX)",
             "• IE5 Elektrikli Sevk Sistemi", "• Hardtop Solar PV Tavan",
             "• Lityum Batarya Paketi", "• Altyapı Payı (1/150)"
         ],
@@ -177,16 +188,16 @@ with col_left:
     st.table(capex_df)
 
 with col_right:
-    st.subheader("💡 Yıllık OPEX ve Tasarruf Dökümü")
+    st.subheader("💡 Yıllık İşletme Giderleri (OPEX) ve Tasarruf Dökümü")
     opex_df = pd.DataFrame({
         "Gider Kalemi": [
-            f"Eski Ahşap Yakıt Faturası ({cruise_speed:.1f} kt / {cruise_diesel_lph:.2f} L/h)",
+            f"Eski Ahşap Yakıt Giderleri ({cruise_speed:.1f} kt / {cruise_diesel_lph:.2f} L/h)",
             "Eski Ahşap Yıllık Bakım/Rektefiye",
-            "ESKİ TOPLAM YILLIK GİDER",
+            "ESKİ TEKNE YILLIK GİDERLER TOPLAMI",
             "Yeni Elektrikli Şebeke Şarj Faturası",
             "Yeni Batarya Yıpranma Karşılığı",
             "Yeni Elektrikli Kestirimci Bakım",
-            "YENİ TOPLAM YILLIK GİDER",
+            "YENİ TEKNE YILLIK GİDER TOPLAMI",
             "YILLIK NET FİNANSAL TASARRUF"
         ],
         "Tutar (TL)": [
