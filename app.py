@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import urllib.request
 import xml.etree.ElementTree as ET
+from bs4 import BeautifulSoup
 
 # Page Configuration
 st.set_page_config(
@@ -25,30 +26,45 @@ def fetch_tcmb_eur():
             if currency.attrib.get('CurrencyCode') == 'EUR':
                 forex_selling = currency.find('ForexSelling').text
                 if forex_selling:
-                    return float(forex_selling)
+                    return float(forex_selling), True
     except Exception:
         pass
-    return 55.50  # Fallback varsayılan değer
+    return 55.50, False  # Fallback varsayılan değer
 
-# Helper function to fetch PO Diesel price online
+# Helper function to fetch Opet Mugla / Ortaca Diesel price online
 @st.cache_data(ttl=3600)
-def fetch_po_diesel():
+def fetch_opet_diesel():
     try:
-        url = "https://www.petrolofisi.com.tr/akaryakit-fiyatlari"
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=5) as response:
+        url = "https://www.opet.com.tr/akaryakit-fiyatlari/mugla"
+        req = urllib.request.Request(
+            url, 
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        )
+        with urllib.request.urlopen(req, timeout=6) as response:
             html = response.read().decode('utf-8')
+        
+        soup = BeautifulSoup(html, 'html.parser')
+        
+        # Opet Muğla sayfasındaki satırları tara
+        for tr in soup.find_all('tr'):
+            tr_text = tr.get_text()
+            if "ORTACA" in tr_text.upper():
+                cols = tr.find_all(['td', 'th'])
+                # Tablo sütun yapısı: İlçe | KDV | Benzin 95 | Motorin UltraForce | ...
+                if len(cols) >= 4:
+                    raw_price = cols[3].text.replace("TL/L", "").replace(",", ".").strip()
+                    return float(raw_price), True
     except Exception:
         pass
-    return 81.00  # Fallback varsayılan değer
+    return 81.62, False  # Fallback varsayılan Ortaca Opet değeri
 
 # Header
 st.markdown('<p style="font-size: 1.8rem; font-weight: 700; color: #1E3A8A; margin-bottom: 0px;">⚓ ElectroFleet Maritime — Dalyan Elektrikli Tekne Dönüşüm Portalı</p>', unsafe_allow_html=True)
 st.markdown('<p style="font-size: 0.9rem; color: #4B5563; margin-bottom: 20px;">Teknik Komisyon Sonuç Raporu Uyumlu İnteraktif Fizibilite ve Hibe Simülatörü</p>', unsafe_allow_html=True)
 
 # Fetch Online Live Data
-live_eur = fetch_tcmb_eur()
-live_diesel = fetch_po_diesel()
+live_eur, eur_is_live = fetch_tcmb_eur()
+live_diesel, diesel_is_live = fetch_opet_diesel()
 
 # Vessel Data Specs
 VESSEL_SPECS = {
@@ -85,10 +101,16 @@ with st.sidebar:
     spec = VESSEL_SPECS[selected_type]
 
     st.subheader("🌐 Canlı Piyasa & Kurlar")
-    st.caption("TCMB ve Petrol Ofisi servislerinden otomatik güncellenir.")
+    st.caption("TCMB ve Opet (Ortaca) servislerinden otomatik güncellenir.")
     
-    eur_rate = st.number_input("EUR / TRY Kuru (TCMB Canlı)", min_value=30.0, max_value=120.0, value=float(live_eur), step=0.1)
-    diesel_price = st.number_input("Dizel Yakıt Fiyatı (PO Canlı TL/L)", min_value=30.0, max_value=180.0, value=float(live_diesel), step=0.5)
+    eur_rate = st.number_input(
+        f"EUR / TRY Kuru {'(🟢 Canlı)' if eur_is_live else '(🟡 Sabit)'}", 
+        min_value=30.0, max_value=120.0, value=float(live_eur), step=0.1
+    )
+    diesel_price = st.number_input(
+        f"Dizel Yakıt Fiyatı {'(🟢 Opet Ortaca)' if diesel_is_live else '(🟡 Sabit)'} TL/L", 
+        min_value=30.0, max_value=180.0, value=float(live_diesel), step=0.1
+    )
     elec_price = st.number_input("Liman Şebeke Elektrik Fiyatı (TL/kWh)", min_value=3.0, max_value=30.0, value=8.50, step=0.5)
 
     st.subheader("İklim ve Operasyon")
@@ -108,7 +130,6 @@ solar_kwh = solar_area * 0.15 * sun_hours
 net_grid_kwh = max(0.0, (brut_kwh / 0.95) - solar_kwh)
 
 # Physics & Dynamic Diesel Calculations (Wooden Vessel)
-# Max load @ 10 knots = 30.0 L/h for 150 HP engine. Scaled by (V_cruise / 10)^3
 max_diesel_lph = 30.0
 cruise_diesel_lph = max_diesel_lph * ((cruise_speed / 10.0) ** 3)  # Küp Kuralı ile Dinamik Tüketim
 
