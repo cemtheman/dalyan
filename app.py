@@ -7,7 +7,7 @@ import streamlit as st
 
 # Page Configuration
 st.set_page_config(
-    page_title="Sessiz Akım — Köyceğiz & Dalyan e-Fleet Simulation Portal",
+    page_title="Sessiz Akım — Quiet Current",
     page_icon="⚓",
     layout="wide",
     initial_sidebar_state="expanded",
