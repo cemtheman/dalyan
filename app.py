@@ -66,10 +66,12 @@ def fetch_aytemiz_diesel():
   return 81.81, False  # Fallback varsayılan motorin değeri
 
 
-# Vessel Data Specs - Calibrated Hydrodynamic & Motor Parameters
+# Vessel Data Specs - Calibrated Hydrodynamic & Grant Categories
 VESSEL_SPECS = {
     "v1": {
-        "name": "Tip 1: 12m Monohull (24 Kişi - Öncelik 3)",
+        "name": (
+            "Tip 1: 12m Monohull (24 Kişi - Kooperatif %55 Hibe - Öncelik 3)"
+        ),
         "hull": "monohull",
         "motors": 1,
         "loa": 12.0,
@@ -86,7 +88,9 @@ VESSEL_SPECS = {
         "priority": "Öncelik 3 (%55 Hibe)",
     },
     "v2": {
-        "name": "Tip 2: 13.5m Katamaran (32 Kişi - Öncelik 2)",
+        "name": (
+            "Tip 2: 13.5m Katamaran (32 Kişi - Kooperatif %55 Hibe - Öncelik 2)"
+        ),
         "hull": "catamaran",
         "motors": 2,
         "loa": 13.5,
@@ -103,7 +107,9 @@ VESSEL_SPECS = {
         "priority": "Öncelik 2 (%55 Hibe)",
     },
     "v3": {
-        "name": "Tip 3: 14m Katamaran (54 Kişi - Öncelik 1)",
+        "name": (
+            "Tip 3: 14m Katamaran (54 Kişi - Kooperatif %70 Hibe - Öncelik 1)"
+        ),
         "hull": "catamaran",
         "motors": 2,
         "loa": 14.0,
@@ -118,6 +124,46 @@ VESSEL_SPECS = {
         "batCapacity": 140,
         "batCostEur": 70000,
         "priority": "Öncelik 1 (%70 Hibe)",
+    },
+    "v4_24": {
+        "name": (
+            "Tip 4A: 12m Monohull (24 Kişi - Kooperatif Dışı %40 Hibe - Öncelik"
+            " 4)"
+        ),
+        "hull": "monohull",
+        "motors": 1,
+        "loa": 12.0,
+        "beam": 3.8,
+        "capacity": 24,
+        "merged": 1,
+        "disp": 6.5,
+        "C": 140,
+        "totalCost": 6000000,
+        "grantRate": 0.40,
+        "maxGrant": 2400000,
+        "batCapacity": 80,
+        "batCostEur": 40000,
+        "priority": "Öncelik 4 (%40 Hibe)",
+    },
+    "v4_32": {
+        "name": (
+            "Tip 4B: 13.5m Katamaran (32 Kişi - Kooperatif Dışı %40 Hibe -"
+            " Öncelik 4)"
+        ),
+        "hull": "catamaran",
+        "motors": 2,
+        "loa": 13.5,
+        "beam": 4.2,
+        "capacity": 32,
+        "merged": 1,
+        "disp": 7.8,
+        "C": 180,
+        "totalCost": 8000000,
+        "grantRate": 0.40,
+        "maxGrant": 3200000,
+        "batCapacity": 100,
+        "batCostEur": 50000,
+        "priority": "Öncelik 4 (%40 Hibe)",
     },
 }
 
@@ -149,15 +195,48 @@ live_diesel, diesel_is_live = fetch_aytemiz_diesel()
 with st.sidebar:
   st.header("⚙️ Simülasyon Girdileri")
 
-  st.subheader("🚢 Filo Dönüşüm Hedefleri")
+  st.subheader("🤝 Kooperatif Üyesi Filo Hedefleri")
   count_v1 = st.number_input(
-      "Tip 1 (12m - 24 Kişi) Adet", min_value=0, max_value=200, value=90, step=1
+      "Tip 1 (12m Monohull - 24 Kişi - %55) Adet",
+      min_value=0,
+      max_value=200,
+      value=50,
+      step=1,
   )
   count_v2 = st.number_input(
-      "Tip 2 (13.5m - 32 Kişi) Adet", min_value=0, max_value=200, value=90, step=1
+      "Tip 2 (13.5m Katamaran - 32 Kişi - %55) Adet",
+      min_value=0,
+      max_value=200,
+      value=50,
+      step=1,
   )
   count_v3 = st.number_input(
-      "Tip 3 (14m - 54 Kişi) Adet", min_value=0, max_value=200, value=50, step=1
+      "Tip 3 (14m Katamaran - 54 Kişi - %70) Adet",
+      min_value=0,
+      max_value=200,
+      value=40,
+      step=1,
+  )
+
+  st.divider()
+
+  st.subheader("👤 Kooperatif Dışı (Bireysel) Hedefler")
+  st.caption(
+      "Öncelik 4 (%40 Hibe). Sadece 24 ve 32 kişilik tekneler kapsama dahildir."
+  )
+  count_v4_24 = st.number_input(
+      "Tip 4A (12m Monohull - 24 Kişi - %40) Adet",
+      min_value=0,
+      max_value=200,
+      value=35,
+      step=1,
+  )
+  count_v4_32 = st.number_input(
+      "Tip 4B (13.5m Katamaran - 32 Kişi - %40) Adet",
+      min_value=0,
+      max_value=200,
+      value=20,
+      step=1,
   )
 
   st.divider()
@@ -264,39 +343,34 @@ def calc_calibrated_vessel_physics(spec, cruise_spd, d_miles, s_hours):
 
 
 # --- Fleet Aggregate Calculations ---
-total_vessels = count_v1 + count_v2 + count_v3
-total_capacity = (
-    count_v1 * VESSEL_SPECS["v1"]["capacity"]
-    + count_v2 * VESSEL_SPECS["v2"]["capacity"]
-    + count_v3 * VESSEL_SPECS["v3"]["capacity"]
+counts = {
+    "v1": count_v1,
+    "v2": count_v2,
+    "v3": count_v3,
+    "v4_24": count_v4_24,
+    "v4_32": count_v4_32,
+}
+
+total_vessels = sum(counts.values())
+total_capacity = sum(
+    counts[k] * VESSEL_SPECS[k]["capacity"] for k in VESSEL_SPECS
 )
 
-v1_grant = min(
-    VESSEL_SPECS["v1"]["maxGrant"],
-    VESSEL_SPECS["v1"]["totalCost"] * VESSEL_SPECS["v1"]["grantRate"],
-)
-v2_grant = min(
-    VESSEL_SPECS["v2"]["maxGrant"],
-    VESSEL_SPECS["v2"]["totalCost"] * VESSEL_SPECS["v2"]["grantRate"],
-)
-v3_grant = min(
-    VESSEL_SPECS["v3"]["maxGrant"],
-    VESSEL_SPECS["v3"]["totalCost"] * VESSEL_SPECS["v3"]["grantRate"],
-)
+grants_per_type = {
+    k: min(
+        VESSEL_SPECS[k]["maxGrant"],
+        VESSEL_SPECS[k]["totalCost"] * VESSEL_SPECS[k]["grantRate"],
+    )
+    for k in VESSEL_SPECS
+}
 
-fleet_total_cost = (
-    count_v1 * VESSEL_SPECS["v1"]["totalCost"]
-    + count_v2 * VESSEL_SPECS["v2"]["totalCost"]
-    + count_v3 * VESSEL_SPECS["v3"]["totalCost"]
+fleet_total_cost = sum(
+    counts[k] * VESSEL_SPECS[k]["totalCost"] for k in VESSEL_SPECS
 )
-
-fleet_total_grant = (
-    count_v1 * v1_grant + count_v2 * v2_grant + count_v3 * v3_grant
-)
+fleet_total_grant = sum(counts[k] * grants_per_type[k] for k in VESSEL_SPECS)
 fleet_total_capex = fleet_total_cost - fleet_total_grant
 
 # --- Fleet Total CO2 Reduction, Tree Equivalent & Energy Balance Calculation ---
-counts = {"v1": count_v1, "v2": count_v2, "v3": count_v3}
 fleet_total_co2_reduction = 0.0
 fleet_daily_solar_kwh = 0.0
 fleet_daily_grid_kwh = 0.0
@@ -346,42 +420,61 @@ with f_kpi4:
 
 # Fleet Breakdown Table
 fleet_summary_df = pd.DataFrame({
-    "Tekne Tipi": [
-        "Tip 1: 12m Monohull (%55 Hibe)",
-        "Tip 2: 13.5m Katamaran (%55 Hibe)",
-        "Tip 3: 14m Katamaran (%70 Hibe)",
+    "Tekne Tipi & Kategori": [
+        "Tip 1: 12m Monohull (Kooperatif %55)",
+        "Tip 2: 13.5m Katamaran (Kooperatif %55)",
+        "Tip 3: 14m Katamaran (Kooperatif %70)",
+        "Tip 4A: 12m Monohull (Bireysel %40)",
+        "Tip 4B: 13.5m Katamaran (Bireysel %40)",
         "TOPLAM",
     ],
-    "Adet": [count_v1, count_v2, count_v3, total_vessels],
-    "Birim Kapasite": ["24 Kişi", "32 Kişi", "54 Kişi", "-"],
+    "Adet": [
+        count_v1,
+        count_v2,
+        count_v3,
+        count_v4_24,
+        count_v4_32,
+        total_vessels,
+    ],
+    "Birim Kapasite": ["24 Kişi", "32 Kişi", "54 Kişi", "24 Kişi", "32 Kişi", "-"],
     "Toplam Kapasite": [
         f"{count_v1 * 24} Kişi",
         f"{count_v2 * 32} Kişi",
         f"{count_v3 * 54} Kişi",
+        f"{count_v4_24 * 24} Kişi",
+        f"{count_v4_32 * 32} Kişi",
         f"{total_capacity:,} Kişi",
     ],
     "Birim Maliyet": [
         f"₺{VESSEL_SPECS['v1']['totalCost']:,}",
         f"₺{VESSEL_SPECS['v2']['totalCost']:,}",
         f"₺{VESSEL_SPECS['v3']['totalCost']:,}",
+        f"₺{VESSEL_SPECS['v4_24']['totalCost']:,}",
+        f"₺{VESSEL_SPECS['v4_32']['totalCost']:,}",
         "-",
     ],
     "Brüt Yatırım": [
         f"₺{count_v1 * VESSEL_SPECS['v1']['totalCost']:,}",
         f"₺{count_v2 * VESSEL_SPECS['v2']['totalCost']:,}",
         f"₺{count_v3 * VESSEL_SPECS['v3']['totalCost']:,}",
+        f"₺{count_v4_24 * VESSEL_SPECS['v4_24']['totalCost']:,}",
+        f"₺{count_v4_32 * VESSEL_SPECS['v4_32']['totalCost']:,}",
         f"₺{fleet_total_cost:,}",
     ],
     "Toplam Hibe Miktarı": [
-        f"₺{int(count_v1 * v1_grant):,}",
-        f"₺{int(count_v2 * v2_grant):,}",
-        f"₺{int(count_v3 * v3_grant):,}",
+        f"₺{int(count_v1 * grants_per_type['v1']):,}",
+        f"₺{int(count_v2 * grants_per_type['v2']):,}",
+        f"₺{int(count_v3 * grants_per_type['v3']):,}",
+        f"₺{int(count_v4_24 * grants_per_type['v4_24']):,}",
+        f"₺{int(count_v4_32 * grants_per_type['v4_32']):,}",
         f"₺{int(fleet_total_grant):,}",
     ],
     "Net Özkaynak İhtiyacı": [
-        f"₺{int(count_v1 * (VESSEL_SPECS['v1']['totalCost'] - v1_grant)):,}",
-        f"₺{int(count_v2 * (VESSEL_SPECS['v2']['totalCost'] - v2_grant)):,}",
-        f"₺{int(count_v3 * (VESSEL_SPECS['v3']['totalCost'] - v3_grant)):,}",
+        f"₺{int(count_v1 * (VESSEL_SPECS['v1']['totalCost'] - grants_per_type['v1'])):,}",
+        f"₺{int(count_v2 * (VESSEL_SPECS['v2']['totalCost'] - grants_per_type['v2'])):,}",
+        f"₺{int(count_v3 * (VESSEL_SPECS['v3']['totalCost'] - grants_per_type['v3'])):,}",
+        f"₺{int(count_v4_24 * (VESSEL_SPECS['v4_24']['totalCost'] - grants_per_type['v4_24'])):,}",
+        f"₺{int(count_v4_32 * (VESSEL_SPECS['v4_32']['totalCost'] - grants_per_type['v4_32'])):,}",
         f"₺{int(fleet_total_capex):,}",
     ],
 })
@@ -462,7 +555,6 @@ for v_key, spec in VESSEL_SPECS.items():
 
     net_savings = old_total_annual - new_total_annual
 
-    # REVISED ROI / PAYBACK CALCULATIONS (Sezonsal Sezon & Operasyonel Ay Hesabı)
     payback_seasons = net_capex / net_savings if net_savings > 0 else float("inf")
     payback_months = (
         payback_seasons * (operating_days / 30.0)
