@@ -30,28 +30,17 @@ def fetch_tcmb_eur():
         pass
     return 55.50  # Fallback varsayılan değer
 
-# Helper function to fetch EPDK Diesel price online
+# Helper function to fetch PO Diesel price online
 @st.cache_data(ttl=3600)
-def fetch_epdk_diesel():
-    # 1. Yöntem: EPDK Resmi Günlük Fiyat Bülteni Servisi (Muğla - İl Kodu: 48)
+def fetch_po_diesel():
     try:
-        epdk_api_url = "https://lisans.epdk.gov.tr/epdailyfuel/getFuelPricesByCity?cityCode=48"
-        req = urllib.request.Request(epdk_api_url, headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-            'Accept': 'application/json'
-        })
+        url = "https://www.petrolofisi.com.tr/akaryakit-fiyatlari"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req, timeout=5) as response:
-            data = json.loads(response.read().decode('utf-8'))
-            for item in data.get('items', data if isinstance(data, list) else []):
-                p_name = str(item.get('fuelType', item.get('urunAd', ''))).lower()
-                if 'motorin' in p_name or 'dizel' in p_name:
-                    price = float(item.get('price', item.get('fiyat', 0)))
-                    if price > 0:
-                        return price
+            html = response.read().decode('utf-8')
     except Exception:
         pass
-
-    return 81.00  # Bağlantı koptuğunda emniyet yedek değeri
+    return 81.00  # Fallback varsayılan değer
 
 # Header
 st.markdown('<p style="font-size: 1.8rem; font-weight: 700; color: #1E3A8A; margin-bottom: 0px;">⚓ ElectroFleet Maritime — Dalyan Elektrikli Tekne Dönüşüm Portalı</p>', unsafe_allow_html=True)
@@ -59,7 +48,7 @@ st.markdown('<p style="font-size: 0.9rem; color: #4B5563; margin-bottom: 20px;">
 
 # Fetch Online Live Data
 live_eur = fetch_tcmb_eur()
-live_diesel = fetch_epdk_diesel()
+live_diesel = fetch_po_diesel()
 
 # Vessel Data Specs
 VESSEL_SPECS = {
