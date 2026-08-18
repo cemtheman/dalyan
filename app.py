@@ -204,9 +204,9 @@ with col_right:
             f"Eski Ahşap Yakıt Giderleri ({cruise_speed:.1f} kt / {cruise_diesel_lph:.2f} L/h)",
             "Eski Ahşap Yıllık Bakım/Rektefiye",
             "ESKİ TEKNE YILLIK GİDERLER TOPLAMI",
-            "Yeni Elektrikli Şebeke Şarj Faturası",
+            "Yeni Elektrikli Şebeke Şarj Masrafları",
             "Yeni Batarya Yıpranma Karşılığı",
-            "Yeni Elektrikli Kestirimci Bakım",
+            "Yeni Elektrikli Periyodik Bakım",
             "YENİ TEKNE YILLIK GİDER TOPLAMI",
             "YILLIK NET FİNANSAL TASARRUF"
         ],
