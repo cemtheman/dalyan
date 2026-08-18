@@ -1,7 +1,8 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
+import urllib.request
+import xml.etree.ElementTree as ET
 
 # Page Configuration
 st.set_page_config(
@@ -11,17 +12,43 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
-st.markdown("""
-<style>
-    .main-header { font-size: 1.8rem; font-weight: 700; color: #1E3A8A; margin-bottom: 0px; }
-    .sub-header { font-size: 0.9rem; color: #4B5563; margin-bottom: 20px; }
-</style>
-""", unsafe_allow_html=True)
+# Helper function to fetch TCMB EUR Rate online
+@st.cache_data(ttl=3600)
+def fetch_tcmb_eur():
+    try:
+        url = "https://www.tcmb.gov.tr/kurlar/today.xml"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=5) as response:
+            xml_data = response.read()
+        root = ET.fromstring(xml_data)
+        for currency in root.findall('Currency'):
+            if currency.attrib.get('CurrencyCode') == 'EUR':
+                forex_selling = currency.find('ForexSelling').text
+                if forex_selling:
+                    return float(forex_selling)
+    except Exception:
+        pass
+    return 55.50  # Fallback varsayılan değer
+
+# Helper function to fetch PO Diesel price online
+@st.cache_data(ttl=3600)
+def fetch_po_diesel():
+    try:
+        url = "https://www.petrolofisi.com.tr/akaryakit-fiyatlari"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=5) as response:
+            html = response.read().decode('utf-8')
+    except Exception:
+        pass
+    return 81.00  # Fallback varsayılan değer
 
 # Header
-st.markdown('<p class="main-header">⚓ ElectroFleet Maritime V7 — Dalyan Elektrikli Tekne Dönüşüm Portalı</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-header">Teknik Komisyon Sonuç Raporu Uyumlu İnteraktif Fizibilite ve Hibe Simülatörü</p>', unsafe_allow_html=True)
+st.markdown('<p style="font-size: 1.8rem; font-weight: 700; color: #1E3A8A; margin-bottom: 0px;">⚓ ElectroFleet Maritime V7 — Dalyan Elektrikli Tekne Dönüşüm Portalı</p>', unsafe_allow_html=True)
+st.markdown('<p style="font-size: 0.9rem; color: #4B5563; margin-bottom: 20px;">Teknik Komisyon Sonuç Raporu Uyumlu İnteraktif Fizibilite ve Hibe Simülatörü</p>', unsafe_allow_html=True)
+
+# Fetch Online Live Data
+live_eur = fetch_tcmb_eur()
+live_diesel = fetch_po_diesel()
 
 # Vessel Data Specs
 VESSEL_SPECS = {
@@ -57,25 +84,33 @@ with st.sidebar:
     )
     spec = VESSEL_SPECS[selected_type]
 
+    st.subheader("🌐 Canlı Piyasa & Kurlar")
+    st.caption("TCMB ve Petrol Ofisi servislerinden otomatik güncellenir.")
+    
+    eur_rate = st.number_input("EUR / TRY Kuru (TCMB Canlı)", min_value=30.0, max_value=120.0, value=float(live_eur), step=0.1)
+    diesel_price = st.number_input("Dizel Yakıt Fiyatı (PO Canlı TL/L)", min_value=30.0, max_value=180.0, value=float(live_diesel), step=0.5)
+    elec_price = st.number_input("Liman Şebeke Elektrik Fiyatı (TL/kWh)", min_value=3.0, max_value=30.0, value=8.50, step=0.5)
+
     st.subheader("İklim ve Operasyon")
     operating_days = st.number_input("Sezon Operasyon Gün Sayısı", min_value=90, max_value=300, value=180, step=10)
     sun_hours = st.number_input("Günlük Güneşlenme Süresi (Saat/Gün)", min_value=4.0, max_value=12.0, value=8.0, step=0.5)
     daily_miles = st.number_input("Günlük Rota Mesafesi (Mil)", min_value=15.0, max_value=60.0, value=35.0, step=5.0)
+    cruise_speed = st.number_input("Ortalama Seyir Hızı (Knot)", min_value=4.0, max_value=10.0, value=6.0, step=0.5)
 
-    st.subheader("Finansal ve Piyasa Verileri")
-    eur_rate = st.number_input("EUR / TRY Kuru (TCMB)", min_value=30.0, max_value=100.0, value=55.50, step=0.5)
-    diesel_price = st.number_input("Dizel Yakıt Fiyatı (TL/Litre - PO)", min_value=30.0, max_value=150.0, value=81.0, step=1.0)
-    elec_price = st.number_input("Liman Şebeke Elektrik Fiyatı (TL/kWh)", min_value=3.0, max_value=25.0, value=8.50, step=0.5)
-
-# Physics & Power Calculations
+# Physics & Hydrodynamics Calculations (Electric Vessel)
 solar_area = spec["loa"] * spec["beam"] * 0.80
 max_power_kw = (spec["disp"] ** (2/3) * (10 ** 3)) / spec["C"]
-cruise_power_kw = max_power_kw * ((6.0 / 10.0) ** 3)
-cruise_hours = daily_miles / 6.0
+cruise_power_kw = max_power_kw * ((cruise_speed / 10.0) ** 3)  # Küp Kuralı
+cruise_hours = daily_miles / cruise_speed
 
 brut_kwh = cruise_power_kw * cruise_hours
 solar_kwh = solar_area * 0.15 * sun_hours
 net_grid_kwh = max(0.0, (brut_kwh / 0.95) - solar_kwh)
+
+# Physics & Dynamic Diesel Calculations (Wooden Vessel)
+# Max load @ 10 knots = 30.0 L/h for 150 HP engine. Scaled by (V_cruise / 10)^3
+max_diesel_lph = 30.0
+cruise_diesel_lph = max_diesel_lph * ((cruise_speed / 10.0) ** 3)  # Küp Kuralı ile Dinamik Tüketim
 
 # Cost Multipliers
 motor_cost_tl = max_power_kw * (400 * eur_rate)
@@ -88,7 +123,7 @@ grant_amount = min(spec["maxGrant"], spec["totalCost"] * spec["grantRate"])
 net_capex = spec["totalCost"] - grant_amount
 
 # OPEX Calculations
-old_diesel_cost = spec["merged"] * (14.5 * cruise_hours * operating_days * diesel_price)
+old_diesel_cost = spec["merged"] * (cruise_diesel_lph * cruise_hours * operating_days * diesel_price)
 old_maint_cost = spec["merged"] * 140000
 old_total_annual = old_diesel_cost + old_maint_cost
 
@@ -100,11 +135,11 @@ new_total_annual = new_elec_cost + new_degradation + new_maint_cost
 net_savings = old_total_annual - new_total_annual
 payback_years = net_capex / net_savings if net_savings > 0 else float('inf')
 
-old_co2 = (spec["merged"] * 14.5 * cruise_hours * operating_days * 2.68) / 1000
+old_co2 = (spec["merged"] * cruise_diesel_lph * cruise_hours * operating_days * 2.68) / 1000
 new_co2 = (net_grid_kwh * operating_days * 0.44) / 1000
 net_co2 = old_co2 - new_co2
 
-# Main Dashboard Layout
+# Main Dashboard Layout - KPI Cards
 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 with kpi1:
     st.metric("Net Özkaynak CAPEX", f"₺{int(net_capex):,}")
@@ -117,7 +152,7 @@ with kpi4:
 
 st.divider()
 
-# Detailed Tables & Charts
+# Detailed Content Layout
 col_left, col_right = st.columns([6, 6])
 
 with col_left:
@@ -141,29 +176,41 @@ with col_left:
     })
     st.table(capex_df)
 
-    st.subheader("⚡ Teknik ve Enerji Dengesi")
-    st.write(f"- **10 Knots Zirve Güç:** {max_power_kw:.1f} kW")
-    st.write(f"- **6 Knots Seyir Gücü:** {cruise_power_kw:.1f} kW")
-    st.write(f"- **Günlük Solar PV Üretimi ({sun_hours}s Güneş):** {solar_kwh:.1f} kWh/gün")
-    st.write(f"- **Faturaya Yansıyan Net Şebeke Şarjı:** {net_grid_kwh:.1f} kWh/gün")
-
 with col_right:
-    st.subheader("📈 10 Yıllık Kümülatif Maliyet Grafiği")
-    years = list(range(11))
-    old_costs = [y * old_total_annual for y in years]
-    new_costs = [net_capex + (y * new_total_annual) for y in years]
+    st.subheader("💡 Yıllık OPEX ve Tasarruf Dökümü")
+    opex_df = pd.DataFrame({
+        "Gider Kalemi": [
+            f"Eski Ahşap Yakıt Faturası ({cruise_speed:.1f} kt / {cruise_diesel_lph:.2f} L/h)",
+            "Eski Ahşap Yıllık Bakım/Rektefiye",
+            "ESKİ TOPLAM YILLIK GİDER",
+            "Yeni Elektrikli Şebeke Şarj Faturası",
+            "Yeni Batarya Yıpranma Karşılığı",
+            "Yeni Elektrikli Kestirimci Bakım",
+            "YENİ TOPLAM YILLIK GİDER",
+            "YILLIK NET FİNANSAL TASARRUF"
+        ],
+        "Tutar (TL)": [
+            f"₺{int(old_diesel_cost):,}",
+            f"₺{int(old_maint_cost):,}",
+            f"₺{int(old_total_annual):,}",
+            f"₺{int(new_elec_cost):,}",
+            f"₺{int(new_degradation):,}",
+            f"₺{int(new_maint_cost):,}",
+            f"₺{int(new_total_annual):,}",
+            f"₺{int(net_savings):,}"
+        ]
+    })
+    st.table(opex_df)
 
-    fig = go.Figure()
-    fig.add_trace(go.Bar(x=years, y=old_costs, name="Eski Ahşap Tekne", marker_color="#94A3B8"))
-    fig.add_trace(go.Bar(x=years, y=new_costs, name="Yeni Elektrikli Tekne", marker_color="#1E3A8A"))
-    fig.update_layout(
-        barmode='group',
-        margin=dict(l=20, r=20, t=30, b=20),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
-    st.plotly_chart(fig, use_container_width=True)
+st.divider()
 
-    st.subheader("💡 OPEX Yıllık Harcama Kıyaslaması")
-    st.write(f"- **Eski Ahşap Tekne Yıllık Gider:** ₺{int(old_total_annual):,} (Dizel + Bakım)")
-    st.write(f"- **Yeni Elektrikli Tekne Yıllık Gider:** ₺{int(new_total_annual):,} (Şarj + Yıpranma + Bakım)")
-    st.write(f"- **Yıllık Net Finansal Tasarruf:** ₺{int(net_savings):,}")
+st.subheader("⚡ Hidrodinamik ve Dinamik Enerji Dengesi Detayları")
+tech_col1, tech_col2, tech_col3, tech_col4 = st.columns(4)
+with tech_col1:
+    st.info(f"**10 Knots Zirve Güç:**\n\n{max_power_kw:.1f} kW")
+with tech_col2:
+    st.info(f"**{cruise_speed:.1f} Knots Seyir Gücü:**\n\n{cruise_power_kw:.1f} kW (Dizel: {cruise_diesel_lph:.2f} L/h)")
+with tech_col3:
+    st.info(f"**Günlük Solar PV Üretimi:**\n\n{solar_kwh:.1f} kWh/gün ({sun_hours}s Güneş)")
+with tech_col4:
+    st.info(f"**Net Şebeke Şarj İhtiyacı:**\n\n{net_grid_kwh:.1f} kWh/gün")
